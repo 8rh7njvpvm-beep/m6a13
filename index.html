@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>野外定向 - 裝備收集版</title>
+    <style>
+        :root {
+            --bg-color: #c8e6c9;
+            --road-color: #8d6e63;
+            --ui-bg: rgba(255, 255, 255, 0.95);
+            --primary: #2e7d32;
+            --accent: #ff6f00;
+        }
+
+        body {
+            font-family: "Microsoft JhengHei", sans-serif;
+            background-color: var(--bg-color);
+            margin: 0;
+            overflow-x: hidden;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            /* 草地紋理 */
+            background-image: radial-gradient(#a5d6a7 15%, transparent 16%), radial-gradient(#a5d6a7 15%, transparent 16%);
+            background-size: 20px 20px;
+            background-position: 0 0, 10px 10px;
+        }
+
+        /* 遊戲主容器 */
+        #game-wrapper {
+            width: 100%;
+            max-width: 600px;
+            height: 100vh;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* 頂部資訊欄 */
+        header {
+            background: var(--ui-bg);
+            padding: 10px 20px;
+            border-radius: 0 0 20px 20px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+            z-index: 10;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        /* 背包區域 */
+        .inventory-box {
+            display: flex;
+            gap: 5px;
+            background: #eee;
+            padding: 5px 10px;
+            border-radius: 15px;
+            border: 2px solid #bdbdbd;
+        }
+        .inv-slot {
+            width: 30px;
+            height: 30px;
+            background: #fff;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 1.2rem;
+            color: #ccc; /* 未獲得時灰色 */
+            border: 1px solid #ddd;
+        }
+        .inv-slot.earned {
+            background: #fff8e1;
+            border-color: #ffca28;
+            animation: popIn 0.5s;
+        }
+
+        /* 道路場景 */
+        .road-scene {
+            flex-grow: 1;
+            position: relative;
+            perspective: 800px;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+        }
+
+        /* 道路繪製 */
+        .road {
+            position: absolute;
+            bottom: 0;
+            width: 100px;
+            height: 100%;
+            background: var(--road-color);
+            transform-origin: bottom;
+            transform: rotateX(60deg) scaleY(2);
+            box-shadow: inset 0 0 20px rgba(0,0,0,0.3);
+        }
+        .road::before { /* 左岔路 */
+            content: '';
+            position: absolute;
+            top: 0; left: -50px;
+            width: 80px; height: 300px;
+            background: var(--road-color);
+            transform: rotate(-30deg);
+            transform-origin: bottom right;
+        }
+        .road::after { /* 右岔路 */
+            content: '';
+            position: absolute;
+            top: 0; right: -50px;
+            width: 80px; height: 300px;
+            background: var(--road-color);
+            transform: rotate(30deg);
+            transform-origin: bottom left;
+        }
+
+        /* 玩家角色 */
+        #player {
+            position: absolute;
+            bottom: 20px;
+            font-size: 4rem;
+            transition: all 0.5s;
+            z-index: 5;
+            filter: drop-shadow(0 5px 5px rgba(0,0,0,0.3));
+        }
+
+        /* 走路動畫 Class */
+        .walking-up {
+            animation: walkUp 1.5s ease-out forwards;
+        }
+        
+        @keyframes walkUp {
+            0% { bottom: -100px; transform: scale(1.2) rotate(-5deg); }
+            25% { transform: scale(1.1) rotate(5deg); }
+            50% { transform: scale(1.0) rotate(-5deg); }
+            75% { transform: scale(0.9) rotate(5deg); }
+            100% { bottom: 180px; transform: scale(0.8) rotate(0deg); }
+        }
+
+        /* 題目面板 */
+        .question-panel {
+            position: absolute;
+            top: 15%; 
+            left: 5%; right: 5%;
+            background: white;
+            padding: 20px;
+            border-radius: 15px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+            text-align: center;
+            z-index: 20;
+            display: none; /* 初始隱藏 */
+            animation: slideDown 0.5s ease-out;
+            border-top: 6px solid var(--accent);
+        }
+
+        .q-text { font-size: 1.1rem; margin-bottom: 20px; text-align: left; line-height: 1.6; }
+        
+        .btn-container {
+            display: flex;
+            gap: 15px;
+        }
+        
+        .choice-btn {
+            flex: 1;
+            padding: 15px;
+            border: none;
+            border-radius: 10px;
+            background: var(--primary);
+            color: white;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: transform 0.2s;
+            box-shadow: 0 4px 0 #1b5e20;
+        }
+        .choice-btn:active { transform: translateY(4px); box-shadow: none; }
+
+        /* 獲得物品特效 */
+        .item-popup {
+            position: fixed;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(255,255,255,0.95);
+            padding: 30px;
+            border-radius: 20px;
+            text-align: center;
+            box-shadow: 0 0 50px rgba(255,193,7,0.5);
+            z-index: 100;
+            display: none;
+            animation: popIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            border: 4px solid #ffca28;
+        }
+        .item-popup h2 { margin: 0; color: #ff6f00; }
+        .item-popup .icon { font-size: 5rem; display: block; margin: 10px 0; animation: bounce 1s infinite; }
+
+        /* 動畫 Keyframes */
+        @keyframes slideDown { from { top: -200px; opacity: 0; } to { top: 15%; opacity: 1; } }
+        @keyframes popIn { from { transform: translate(-50%, -50%) scale(0.5); opacity: 0; } to { transform: translate(-50%, -50%) scale(1); opacity: 1; } }
+        @keyframes bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
+
+        /* 錯誤/訂正視窗 */
+        .feedback-modal {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.85);
+            z-index: 99;
+            display: none;
+            justify-content: center;
+            align-items: center;
+        }
+        .feedback-box {
+            background: white;
+            width: 85%;
+            max-width: 450px;
+            padding: 25px;
+            border-radius: 15px;
+            text-align: left;
+            position: relative;
+            border-left: 8px solid #f44336;
+        }
+
+        /* 結束畫面 */
+        #end-screen {
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            background: var(--bg-color);
+            text-align: center;
+            z-index: 200;
+            position: fixed;
+            top: 0; width: 100%;
+        }
+        
+        .start-btn {
+            background: var(--accent);
+            color: white;
+            padding: 15px 40px;
+            font-size: 1.5rem;
+            border: none;
+            border-radius: 50px;
+            cursor: pointer;
+            box-shadow: 0 5px 15px rgba(255, 111, 0, 0.4);
+            animation: bounce 2s infinite;
+        }
+
+    </style>
+</head>
+<body>
+
+    <div id="start-screen" style="position:fixed; top:0; left:0; width:100%; height:100%; background:var(--bg-color); z-index:200; display:flex; flex-direction:column; align-items:center; justify-content:center;">
+        <div style="font-size: 5rem;">🏕️</div>
+        <h1>露營野外定向</h1>
+        <p>收集 5 件裝備，準備去露營！</p>
+        <button class="start-btn" onclick="startGame()">開始冒險</button>
+    </div>
+
+    <div id="game-wrapper" style="display:none;">
+        <header>
+            <div style="font-weight:bold; color:var(--primary);">🌲 定向越野</div>
+            <div class="inventory-box" id="inventory">
+                <div class="inv-slot" id="slot-0">?</div>
+                <div class="inv-slot" id="slot-1">?</div>
+                <div class="inv-slot" id="slot-2">?</div>
+                <div class="inv-slot" id="slot-3">?</div>
+                <div class="inv-slot" id="slot-4">?</div>
+            </div>
+        </header>
+
+        <div class="road-scene">
+            <div class="road"></div>
+            <div id="player">🏃</div>
+        </div>
+
+        <div class="question-panel" id="question-panel">
+            <div id="q-text" class="q-text">題目載入中...</div>
+            <div class="btn-container">
+                <button class="choice-btn" id="btn-left" onclick="answer(0)">左邊</button>
+                <button class="choice-btn" id="btn-right" onclick="answer(1)">右邊</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="item-popup" class="item-popup">
+        <h2 id="praise-text">好棒！</h2>
+        <span class="icon" id="earned-icon">🔦</span>
+        <p>獲得：<span id="earned-name" style="font-weight:bold;">手電筒</span></p>
+        <p style="color:#777; font-size:0.9rem;">露營裝備 +1</p>
+        <button class="choice-btn" style="background:var(--accent);" onclick="closePopupAndMove()">放入背包，繼續前進</button>
+    </div>
+
+    <div id="feedback-modal" class="feedback-modal">
+        <div class="feedback-box">
+            <h2 style="margin-top:0; color:#c62828;">❌ 走錯路了！</h2>
+            <div id="explanation-text" style="background:#ffebee; padding:10px; border-radius:5px; margin-bottom:15px; white-space: pre-wrap;"></div>
+            <button class="choice-btn" style="width:100%;" onclick="retryQuestion()">重新尋找方向</button>
+        </div>
+    </div>
+
+    <div id="end-screen">
+        <div style="font-size: 5rem;">⛺🔥</div>
+        <h1>抵達營地！</h1>
+        <p>你的裝備齊全，可以開始生火野炊了！</p>
+        <div style="display:flex; gap:10px; font-size:2rem; margin: 20px;">
+            <span>🗺️</span><span>🔦</span><span>🥘</span><span>🔥</span><span>⛺</span>
+        </div>
+        <p>你是最棒的比例尺專家！</p>
+        <button class="start-btn" onclick="location.reload()">再玩一次</button>
+    </div>
+
+    <script>
+        // 遊戲數據
+        const items = [
+            { icon: '🗺️', name: '地圖' },
+            { icon: '🔦', name: '手電筒' },
+            { icon: '🥘', name: '野炊鍋具' },
+            { icon: '🔥', name: '營火木材' },
+            { icon: '⛺', name: '豪華帳篷' }
+        ];
+
+        const praises = [
+            "太厲害了！方向感絕佳！",
+            "答對了！你是地圖大師！",
+            "太神了！距離計算完全正確！",
+            "好棒！露營達人就是你！",
+            "正確無誤！繼續保持！"
+        ];
+
+        let currentLevel = 0;
+        let currentQuestion = null;
+
+        // 啟動遊戲
+        function startGame() {
+            document.getElementById('start-screen').style.display = 'none';
+            document.getElementById('game-wrapper').style.display = 'flex';
+            playWalkAnimation();
+        }
+
+        // 播放走路動畫
+        function playWalkAnimation() {
+            const player = document.getElementById('player');
+            const panel = document.getElementById('question-panel');
+            
+            // 隱藏題目
+            panel.style.display = 'none';
+            
+            // 重置動畫
+            player.classList.remove('walking-up');
+            void player.offsetWidth; // 觸發 Reflow
+            player.style.bottom = "-100px"; // 確保起始位置
+
+            // 開始走路
+            player.classList.add('walking-up');
+
+            // 走到定位後顯示題目
+            setTimeout(() => {
+                generateNewQuestion();
+                panel.style.display = 'block';
+            }, 1500);
+        }
+
+        // 題目生成邏輯 (與之前相同，但針對新UI調整)
+        function generateNewQuestion() {
+            // 簡易的亂數生成
+            const r = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
+            
+            const types = ['calc_actual', 'calc_scale', 'map_read'];
+            const type = types[r(0, 2)];
+            let q, ans, wrong, exp;
+
+            if (type === 'calc_actual') {
+                const scale = [1000, 2500, 50000][r(0, 2)];
+                const cm = r(2, 8);
+                const actualCm = cm * scale;
+                const m = actualCm / 100;
+                
+                q = `地圖比例尺 1:${scale}。<br>量得距離 ${cm}cm。<br>實際距離是多少？`;
+                ans = `${m} 米`;
+                wrong = `${m * 10} 米`;
+                exp = `比例尺 1:${scale} 代表圖上1cm = 實際${scale}cm。\n計算：${cm} × ${scale} = ${actualCm}cm。\n換算成米：${actualCm} ÷ 100 = ${m}米。`;
+            } else if (type === 'calc_scale') {
+                const realM = r(10, 50) * 10; // 100m to 500m
+                const mapCm = r(2, 5);
+                const realCm = realM * 100;
+                const scaleVal = realCm / mapCm;
+                
+                q = `實際距離 ${realM}米。<br>地圖上畫了 ${mapCm}cm。<br>比例尺是多少？`;
+                ans = `1 : ${scaleVal}`;
+                wrong = `1 : ${scaleVal/10}`;
+                exp = `先把單位統一成cm：${realM}米 = ${realCm}cm。\n比例 = 圖上 : 實際 = ${mapCm} : ${realCm}。\n化簡後為 1 : ${scaleVal}。`;
+            } else {
+                const val = r(1, 5) * 100;
+                q = `線段比例尺標示 0 到 1cm 代表 ${val}米。<br>換成數字比例尺是多少？`;
+                ans = `1 : ${val}00`;
+                wrong = `1 : ${val}`;
+                exp = `圖上1cm代表${val}米。\n${val}米 = ${val}00cm。\n所以比例尺是 1 : ${val}00。`;
+            }
+
+            // 隨機分配左右
+            const isLeft = Math.random() < 0.5;
+            
+            currentQuestion = {
+                text: q,
+                left: isLeft ? ans : wrong,
+                right: isLeft ? wrong : ans,
+                correctIdx: isLeft ? 0 : 1,
+                explanation: exp
+            };
+
+            document.getElementById('q-text').innerHTML = currentQuestion.text;
+            document.getElementById('btn-left').innerText = currentQuestion.left;
+            document.getElementById('btn-right').innerText = currentQuestion.right;
+        }
+
+        // 處理回答
+        function answer(side) {
+            if (side === currentQuestion.correctIdx) {
+                // 答對
+                showReward();
+            } else {
+                // 答錯
+                document.getElementById('explanation-text').innerText = currentQuestion.explanation;
+                document.getElementById('feedback-modal').style.display = 'flex';
+            }
+        }
+
+        // 顯示獎勵
+        function showReward() {
+            // 隨機讚美
+            const praise = praises[Math.floor(Math.random() * praises.length)];
+            document.getElementById('praise-text').innerText = praise;
+
+            // 取得當前獎勵
+            const item = items[currentLevel];
+            document.getElementById('earned-icon').innerText = item.icon;
+            document.getElementById('earned-name').innerText = item.name;
+
+            // 更新 UI 背包
+            const slot = document.getElementById(`slot-${currentLevel}`);
+            slot.innerText = item.icon;
+            slot.classList.add('earned');
+
+            // 顯示彈窗
+            document.getElementById('item-popup').style.display = 'block';
+            document.getElementById('question-panel').style.display = 'none';
+        }
+
+        // 關閉獎勵並移動
+        function closePopupAndMove() {
+            document.getElementById('item-popup').style.display = 'none';
+            currentLevel++;
+
+            if (currentLevel >= 5) {
+                // 遊戲結束
+                document.getElementById('game-wrapper').style.display = 'none';
+                document.getElementById('end-screen').style.display = 'flex';
+            } else {
+                // 下一關
+                playWalkAnimation();
+            }
+        }
+
+        // 重試
+        function retryQuestion() {
+            document.getElementById('feedback-modal').style.display = 'none';
+            // 不重置題目，讓學生再選一次或看懂訂正
+        }
+
+    </script>
+</body>
+</html>
